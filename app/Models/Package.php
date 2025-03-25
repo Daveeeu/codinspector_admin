@@ -127,4 +127,24 @@ class Package extends Model
     {
         return $query->where('billing_type', $type);
     }
+
+    /**
+     * Get the features for the package.
+     */
+    public function features()
+    {
+        return $this->hasMany(PackageFeature::class)->orderBy('order');
+    }
+
+    /**
+     * Get the features metadata as an array.
+     */
+    public function getFeaturesAttribute()
+    {
+        if ($this->features_metadata) {
+            return json_decode($this->features_metadata, true);
+        }
+
+        return [];
+    }
 }
