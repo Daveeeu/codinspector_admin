@@ -45,42 +45,57 @@
                     </div>
                 </div>
 
-                <div class="row mb-3 monthly-price-container" style="{{ old('billing_type') == 'monthly' || old('billing_type') == 'unit' ? '' : 'display: none;' }}">
-                    <div class="col-md-6">
-                        <label for="monthly_price" class="form-label">Monthly Price ({{ Auth::user()->currentDomain->currency }})</label>
-                        <input type="number" step="0.01" class="form-control @error('monthly_price') is-invalid @enderror" id="monthly_price" name="monthly_price" value="{{ old('monthly_price') }}">
-                        @error('monthly_price')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
+                <!-- Árazási lehetőségek -->
+                <!-- Árazási lehetőségek -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <span>Pricing Options</span>
+                    </div>
+                    <div class="card-body">
+                        <!-- Havi ár (mindig látható és kötelező) -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="monthly_price" class="form-label">Monthly Price ({{ Auth::user()->currentDomain->currency }})</label>
+                                <input type="number" step="0.01" class="form-control @error('monthly_price') is-invalid @enderror" id="monthly_price" name="monthly_price" value="{{ old('monthly_price') }}" required>
+                                <small class="text-muted">Monthly subscription price (required)</small>
+                                @error('monthly_price')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+
+                        <!-- Éves ár (mindig látható és kötelező) -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="yearly_price" class="form-label">Yearly Price ({{ Auth::user()->currentDomain->currency }})</label>
+                                <input type="number" step="0.01" class="form-control @error('yearly_price') is-invalid @enderror" id="yearly_price" name="yearly_price" value="{{ old('yearly_price') }}" required>
+                                <small class="text-muted">Yearly subscription price (required)</small>
+                                @error('yearly_price')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+
+                        <!-- Egységenkénti ár (csak ha unit-based) -->
+                        <div class="row mb-3 unit-price-container" style="{{ old('billing_type') == 'unit' ? '' : 'display: none;' }}">
+                            <div class="col-md-6">
+                                <label for="unit_price" class="form-label">Unit Price ({{ Auth::user()->currentDomain->currency }})</label>
+                                <input type="number" step="0.01" class="form-control @error('unit_price') is-invalid @enderror" id="unit_price" name="unit_price" value="{{ old('unit_price') }}">
+                                <small class="text-muted">Price per query (required for Unit-based billing)</small>
+                                @error('unit_price')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="row mb-3 yearly-price-container" style="{{ old('billing_type') == 'yearly' ? '' : 'display: none;' }}">
-                    <div class="col-md-6">
-                        <label for="yearly_price" class="form-label">Yearly Price ({{ Auth::user()->currentDomain->currency }})</label>
-                        <input type="number" step="0.01" class="form-control @error('yearly_price') is-invalid @enderror" id="yearly_price" name="yearly_price" value="{{ old('yearly_price') }}">
-                        @error('yearly_price')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
-                    </div>
-                </div>
-
-                <div class="row mb-3 unit-price-container" style="{{ old('billing_type') == 'unit' ? '' : 'display: none;' }}">
-                    <div class="col-md-6">
-                        <label for="unit_price" class="form-label">Unit Price ({{ Auth::user()->currentDomain->currency }})</label>
-                        <input type="number" step="0.01" class="form-control @error('unit_price') is-invalid @enderror" id="unit_price" name="unit_price" value="{{ old('unit_price') }}">
-                        @error('unit_price')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                        @enderror
-                    </div>
-                </div>
-
-                <!-- Max Queries Section - Only for Monthly and Yearly -->
-                <div class="row mb-3 max-queries-container" style="{{ old('billing_type') == 'monthly' || old('billing_type') == 'yearly' ? '' : 'display: none;' }}">
+                <!-- Max Queries Section - Always Visible -->
+                <div class="row mb-3">
                     <div class="col-md-6">
                         <label for="max_queries" class="form-label">Maximum Queries</label>
                         <input type="number" min="1" class="form-control @error('max_queries') is-invalid @enderror" id="max_queries" name="max_queries" value="{{ old('max_queries') }}">
-                        <small class="text-muted">Maximum number of queries allowed for this package</small>
+                        <small class="text-muted">Maximum number of queries allowed for this package (not applicable for Unit-based billing)</small>
                         @error('max_queries')
                         <div class="invalid-feedback">{{ $message }}</div>
                         @enderror
@@ -141,6 +156,49 @@
                     </div>
                 </div>
 
+                <!-- Permissions Section -->
+                <div class="card mt-4 mb-4">
+                    <div class="card-header">
+                        <span>Package Permissions</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="role_name" class="form-label">Role Name</label>
+                            <input type="text" class="form-control @error('role_name') is-invalid @enderror" id="role_name" name="role_name" value="{{ old('role_name') }}" placeholder="e.g. Package Premium User">
+                            <small class="text-muted">A role will be created with this name and assigned to users who subscribe to this package</small>
+                            @error('role_name')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Available Permissions</label>
+                            <div class="permissions-list">
+                                @if(isset($permissions) && count($permissions) > 0)
+                                    <div class="row">
+                                        @foreach($permissions as $permission)
+                                            <div class="col-md-4 mb-2">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox"
+                                                           name="permissions[]"
+                                                           id="permission-{{ $permission->id }}"
+                                                           value="{{ $permission->id }}"
+                                                        {{ in_array($permission->id, old('permissions', [])) ? 'checked' : '' }}>
+                                                    <label class="form-check-label" for="permission-{{ $permission->id }}">
+                                                        {{ $permission->name }}
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <p class="text-muted">No permissions available in the system.</p>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" id="is_active" name="is_active" value="1" checked>
                     <label class="form-check-label" for="is_active">
@@ -161,30 +219,45 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const billingTypeSelect = document.getElementById('billing_type');
-            const monthlyPriceContainer = document.querySelector('.monthly-price-container');
-            const yearlyPriceContainer = document.querySelector('.yearly-price-container');
             const unitPriceContainer = document.querySelector('.unit-price-container');
-            const maxQueriesContainer = document.querySelector('.max-queries-container');
 
+            // Billing type változásra
+            // Billing type változásra
             billingTypeSelect.addEventListener('change', function() {
-                // Hide all price containers first
-                monthlyPriceContainer.style.display = 'none';
-                yearlyPriceContainer.style.display = 'none';
-                unitPriceContainer.style.display = 'none';
-                maxQueriesContainer.style.display = 'none';
-
-                // Show the relevant price container based on the selected billing type
-                if (this.value === 'monthly') {
-                    monthlyPriceContainer.style.display = '';
-                    maxQueriesContainer.style.display = '';
-                } else if (this.value === 'yearly') {
-                    yearlyPriceContainer.style.display = '';
-                    maxQueriesContainer.style.display = '';
-                } else if (this.value === 'unit') {
-                    monthlyPriceContainer.style.display = '';
+                // Csak az egységalapú árat mutatjuk/rejtjük, a havi és éves ár mindig látható
+                if (this.value === 'unit') {
                     unitPriceContainer.style.display = '';
+                    unitPrice.required = true;
+                } else {
+                    unitPriceContainer.style.display = 'none';
+                    unitPrice.required = false;
                 }
             });
+
+            // Segédfunkció a kötelező mezők frissítéséhez
+            function updateRequiredFields(billingType) {
+                const monthlyPrice = document.getElementById('monthly_price');
+                const yearlyPrice = document.getElementById('yearly_price');
+                const unitPrice = document.getElementById('unit_price');
+
+                // Alapértelmezetten egyik sem kötelező
+                monthlyPrice.required = false;
+                yearlyPrice.required = false;
+                unitPrice.required = false;
+
+                // Beállítjuk a megfelelő kötelező mezőket
+                if (billingType === 'monthly') {
+                    monthlyPrice.required = true;
+                } else if (billingType === 'yearly') {
+                    yearlyPrice.required = true;
+                } else if (billingType === 'unit') {
+                    monthlyPrice.required = true;
+                    unitPrice.required = true;
+                }
+            }
+
+            // Inicializálás az aktuális értékkel
+            updateRequiredFields(billingTypeSelect.value);
 
             // Features functionality
             const addFeatureBtn = document.getElementById('add-feature');

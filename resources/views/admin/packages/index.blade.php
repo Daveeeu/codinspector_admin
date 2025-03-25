@@ -32,11 +32,11 @@
                         <tr>
                             <td>{{ $package->name }}</td>
                             <td>{{ ucfirst($package->billing_type) }}</td>
-                            <td>{{ $package->monthly_price ? $package->domain->currency . ' ' . number_format($package->monthly_price, 2) : '-' }}</td>
-                            <td>{{ $package->yearly_price ? $package->domain->currency . ' ' . number_format($package->yearly_price, 2) : '-' }}</td>
-                            <td>{{ $package->unit_price ? $package->domain->currency . ' ' . number_format($package->unit_price, 2) : '-' }}</td>
+                            <td>{{ isset($package->monthly_price) ? (isset($package->domain) && isset($package->domain->currency) ? $package->domain->currency : '$') . ' ' . number_format($package->monthly_price, 2) : '-' }}</td>
+                            <td>{{ isset($package->yearly_price) ? (isset($package->domain) && isset($package->domain->currency) ? $package->domain->currency : '$') . ' ' . number_format($package->yearly_price, 2) : '-' }}</td>
+                            <td>{{ isset($package->unit_price) ? (isset($package->domain) && isset($package->domain->currency) ? $package->domain->currency : '$') . ' ' . number_format($package->unit_price, 2) : '-' }}</td>
                             <td>
-                                @if($package->is_active)
+                                @if(isset($package->is_active) && $package->is_active)
                                     <span class="badge bg-success">Active</span>
                                 @else
                                     <span class="badge bg-danger">Inactive</span>
@@ -45,11 +45,11 @@
                             <td>
                                 @can('manage packages')
                                     <div class="btn-group" role="group">
-                                        <a href="{{ route('admin.packages.edit', $package) }}" class="btn btn-sm btn-info" title="Edit Package">
+                                        <a href="{{ route('admin.packages.edit', ['package' => $package]) }}" class="btn btn-sm btn-info" title="Edit Package">
                                             <i class="bi bi-pencil"></i>
                                         </a>
 
-                                        <form action="{{ route('admin.packages.destroy', $package) }}" method="POST" class="d-inline delete-form">
+                                        <form action="{{ route('admin.packages.destroy', ['package' => $package]) }}" method="POST" class="d-inline delete-form">
                                             @csrf
                                             @method('DELETE')
                                             <button type="submit" class="btn btn-sm btn-danger" title="Delete Package" onclick="return confirm('Are you sure you want to delete this package?')">

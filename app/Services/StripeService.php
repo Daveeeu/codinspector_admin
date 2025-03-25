@@ -29,24 +29,82 @@ class StripeService
         }
     }
 
-    public function listCustomersForDomain($domainId, $limit = 100)
+    /**
+     * Create a product in Stripe
+     *
+     * @param Package $package
+     * @return array
+     */
+    public function createProduct(Package $package)
     {
         try {
-            // A Search API használata a metadata.domain_id alapján történő szűréshez
-            $search = \Stripe\Customer::search([
-                'query' => "metadata['domain_id']:'{$domainId}'",
-                'limit' => $limit,
-                'expand' => ['data.subscriptions']
+            // Create product
+            $product = Product::create([
+                'name' => $package->name,
+                'description' => $package->description,
+                'active' => true, // Default to active
+                'metadata' => [
+                    'domain_id' => $package->domain->id,
+                    'package_id' => $package->package_id,
+                    'package_type' => $package->billing_type,
+                ],
             ]);
+
+            $prices = [];
+
+            // Create monthly price (minden csomaghoz)
+            if (isset($package->monthly_price) && $package->monthly_price > 0) {
+                $monthlyPrice = Price::create([
+                    'product' => $product->id,
+                    'unit_amount' => (int)($package->monthly_price * 100), // Convert to cents
+                    'currency' => $package->domain->currency,
+                    'recurring' => ['interval' => 'month'],
+                    'metadata' => [
+                        'package_id' => $package->package_id,
+                        'billing_type' => 'monthly',
+                    ],
+                ]);
+                $prices['monthly'] = $monthlyPrice->id;
+            }
+
+            // Create yearly price (minden csomaghoz)
+            if (isset($package->yearly_price) && $package->yearly_price > 0) {
+                $yearlyPrice = Price::create([
+                    'product' => $product->id,
+                    'unit_amount' => (int)($package->yearly_price * 100), // Convert to cents
+                    'currency' => $package->domain->currency,
+                    'recurring' => ['interval' => 'year'],
+                    'metadata' => [
+                        'package_id' => $package->package_id,
+                        'billing_type' => 'yearly',
+                    ],
+                ]);
+                $prices['yearly'] = $yearlyPrice->id;
+            }
+
+            // Create unit price (csak ha unit-based csomag)
+            if ($package->billing_type == 'unit' && isset($package->unit_price) && $package->unit_price > 0) {
+                $unitPrice = Price::create([
+                    'product' => $product->id,
+                    'unit_amount' => (int)($package->unit_price * 100), // Convert to cents
+                    'currency' => $package->domain->currency,
+                    'metadata' => [
+                        'package_id' => $package->package_id,
+                        'billing_type' => 'unit',
+                    ],
+                ]);
+                $prices['unit'] = $unitPrice->id;
+            }
 
             return [
                 'success' => true,
-                'data' => $search->data,
-                'has_more' => $search->has_more,
+                'product_id' => $product->id,
+                'prices' => $prices,
             ];
         } catch (Exception $e) {
-            Log::error('Stripe ügyfelek lekérdezési hiba: ' . $e->getMessage(), [
-                'domain_id' => $domainId
+            Log::error('Stripe product creation error: ' . $e->getMessage(), [
+                'package_id' => $package->package_id,
+                'package_name' => $package->name
             ]);
 
             return [
@@ -56,7 +114,93 @@ class StripeService
         }
     }
 
+    /**
+     * Update a product in Stripe
+     *
+     * @param Package $package
+     * @return array
+     */
+    public function updateProduct(Package $package)
+    {
+        try {
+            // Get stripe product ID from permissions or directly from package
+            $stripeProductId = $package->stripe_product_id ?? null;
 
+            if (!$stripeProductId) {
+                $permissions = json_decode($package->permissions, true) ?: [];
+                $stripeProductId = $permissions['stripe_product_id'] ?? null;
+
+                if (!$stripeProductId) {
+                    throw new Exception('No Stripe product ID found for this package.');
+                }
+            }
+
+            // Update product
+            $product = Product::update($stripeProductId, [
+                'name' => $package->name,
+                'description' => $package->description,
+                'active' => true, // Always active when updating
+            ]);
+
+            return [
+                'success' => true,
+                'product_id' => $product->id,
+            ];
+        } catch (Exception $e) {
+            Log::error('Stripe product update error: ' . $e->getMessage(), [
+                'package_id' => $package->package_id,
+                'package_name' => $package->name
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Archive a product in Stripe
+     *
+     * @param Package $package
+     * @return array
+     */
+    public function archiveProduct(Package $package)
+    {
+        try {
+            // Get stripe product ID from permissions or directly from package
+            $stripeProductId = $package->stripe_product_id ?? null;
+
+            if (!$stripeProductId) {
+                $permissions = json_decode($package->permissions, true) ?: [];
+                $stripeProductId = $permissions['stripe_product_id'] ?? null;
+
+                if (!$stripeProductId) {
+                    throw new Exception('No Stripe product ID found for this package.');
+                }
+            }
+
+            // Archive product
+            $product = Product::update($stripeProductId, [
+                'active' => false,
+            ]);
+
+            return [
+                'success' => true,
+                'product_id' => $product->id,
+            ];
+        } catch (Exception $e) {
+            Log::error('Stripe product archive error: ' . $e->getMessage(), [
+                'package_id' => $package->package_id,
+                'package_name' => $package->name
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
 
     /**
      * Ügyfél lekérdezése a Stripe-ból
@@ -387,10 +531,10 @@ class StripeService
 
             // Ár azonosító meghatározása a számlázási ciklus alapján
             $priceId = null;
-            if ($subscriptionData['billing_cycle'] == 'monthly' && $package->stripe_monthly_price_id) {
-                $priceId = $package->stripe_monthly_price_id;
-            } elseif ($subscriptionData['billing_cycle'] == 'yearly' && $package->stripe_yearly_price_id) {
-                $priceId = $package->stripe_yearly_price_id;
+            if ($subscriptionData['billing_cycle'] == 'monthly' && $package->stripe_price_id) {
+                $priceId = $package->stripe_price_id;
+            } elseif ($subscriptionData['billing_cycle'] == 'yearly' && $package->stripe_price_yearly_id) {
+                $priceId = $package->stripe_price_yearly_id;
             }
 
             if (!$priceId) {
@@ -529,18 +673,21 @@ class StripeService
             $units = $invoiceData['units'];
 
             // Ellenőrizzük, hogy van-e egységár
-            if (!$package->unit_price || !$package->isUnitBased()) {
+            $permissions = json_decode($package->permissions, true) ?: [];
+            $unitPriceId = $permissions['stripe_unit_price_id'] ?? null;
+
+            if (!$unitPriceId) {
                 throw new Exception('A kiválasztott csomag nem támogatja az egységalapú számlázást.');
             }
 
             // Összeg kiszámítása
-            $amount = $package->unit_price * $units;
+            $amount = $package->cost_per_query * $units;
 
             // Számlatétel létrehozása
             $invoiceItem = InvoiceItem::create([
                 'customer' => $customerId,
                 'amount' => (int)($amount * 100), // Centekre váltás
-                'currency' => $package->domain->currency,
+                'currency' => $package->domain->currency ?? 'usd',
                 'description' => "{$units} egység - {$package->name}",
                 'metadata' => $invoiceData['metadata'] ?? [],
             ]);
@@ -587,10 +734,10 @@ class StripeService
         try {
             // Ár azonosító meghatározása a számlázási ciklus alapján
             $priceId = null;
-            if ($billingCycle == 'monthly' && $newPackage->stripe_monthly_price_id) {
-                $priceId = $newPackage->stripe_monthly_price_id;
-            } elseif ($billingCycle == 'yearly' && $newPackage->stripe_yearly_price_id) {
-                $priceId = $newPackage->stripe_yearly_price_id;
+            if ($billingCycle == 'monthly' && $newPackage->stripe_price_id) {
+                $priceId = $newPackage->stripe_price_id;
+            } elseif ($billingCycle == 'yearly' && $newPackage->stripe_price_yearly_id) {
+                $priceId = $newPackage->stripe_price_yearly_id;
             }
 
             if (!$priceId) {
@@ -616,7 +763,7 @@ class StripeService
                 ],
                 'proration_behavior' => 'create_prorations',
                 'metadata' => [
-                    'package_id' => $newPackage->id,
+                    'package_id' => $newPackage->package_id,
                     'updated_at' => now()->toIso8601String(),
                 ]
             ]);
@@ -628,7 +775,7 @@ class StripeService
         } catch (Exception $e) {
             Log::error('Stripe előfizetés csomag módosítási hiba: ' . $e->getMessage(), [
                 'subscription_id' => $subscriptionId,
-                'new_package_id' => $newPackage->id
+                'new_package_id' => $newPackage->package_id
             ]);
 
             return [
@@ -668,81 +815,30 @@ class StripeService
     }
 
     /**
-     * Create a product in Stripe
+     * Adott domain felhasználóinak lekérdezése
      *
-     * @param Package $package
+     * @param int $domainId
+     * @param int $limit
      * @return array
      */
-    public function createProduct(Package $package)
+    public function listCustomersForDomain($domainId, $limit = 100)
     {
         try {
-            // Create product
-            $product = Product::create([
-                'name' => $package->name,
-                'description' => $package->description,
-                'active' => $package->is_active,
-                'metadata' => [
-                    'domain_id' => $package->domain_id,
-                    'package_id' => $package->id,
-                    'package_type' => $package->billing_type,
-                ],
+            // A Search API használata a metadata.domain_id alapján történő szűréshez
+            $search = \Stripe\Customer::search([
+                'query' => "metadata['domain_id']:'{$domainId}'",
+                'limit' => $limit,
+                'expand' => ['data.subscriptions']
             ]);
-
-            $prices = [];
-
-            // Create monthly price if applicable
-            if ($package->billing_type == 'monthly' || $package->billing_type == 'unit') {
-                $monthlyPrice = Price::create([
-                    'product' => $product->id,
-                    'unit_amount' => (int)($package->monthly_price * 100), // Convert to cents
-                    'currency' => $package->domain->currency,
-                    'recurring' => ['interval' => 'month'],
-                    'metadata' => [
-                        'package_id' => $package->id,
-                        'billing_type' => 'monthly',
-                    ],
-                ]);
-                $prices['monthly'] = $monthlyPrice->id;
-            }
-
-            // Create yearly price if applicable
-            if ($package->billing_type == 'yearly') {
-                $yearlyPrice = Price::create([
-                    'product' => $product->id,
-                    'unit_amount' => (int)($package->yearly_price * 100), // Convert to cents
-                    'currency' => $package->domain->currency,
-                    'recurring' => ['interval' => 'year'],
-                    'metadata' => [
-                        'package_id' => $package->id,
-                        'billing_type' => 'yearly',
-                    ],
-                ]);
-                $prices['yearly'] = $yearlyPrice->id;
-            }
-
-            // Create unit price if applicable
-            if ($package->billing_type == 'unit') {
-                $unitPrice = Price::create([
-                    'product' => $product->id,
-                    'unit_amount' => (int)($package->unit_price * 100), // Convert to cents
-                    'currency' => $package->domain->currency,
-                    'metadata' => [
-                        'package_id' => $package->id,
-                        'billing_type' => 'unit',
-                    ],
-                ]);
-                $prices['unit'] = $unitPrice->id;
-            }
 
             return [
                 'success' => true,
-                'product_id' => $product->id,
-                'prices' => $prices,
+                'data' => $search->data,
+                'has_more' => $search->has_more,
             ];
         } catch (Exception $e) {
-            Log::error('Stripe product creation error: ' . $e->getMessage(), [
-                'package_id' => $package->id,
-                'package_name' => $package->name
+            Log::error('Stripe ügyfelek lekérdezési hiba: ' . $e->getMessage(), [
+                'domain_id' => $domainId
             ]);
 
             return [
@@ -751,6 +847,4 @@ class StripeService
             ];
         }
     }
-
-
 }

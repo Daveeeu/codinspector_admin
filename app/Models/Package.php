@@ -10,141 +10,103 @@ class Package extends Model
     use HasFactory;
 
     /**
+     * The primary key for the model.
+     *
+     * @var string
+     */
+    protected $primaryKey = 'package_id';
+
+    /**
+     * The "type" of the auto-incrementing ID.
+     *
+     * @var string
+     */
+    protected $keyType = 'integer';
+
+    /**
+     * Get the route key for the model.
+     *
+     * @return string
+     */
+    public function getRouteKeyName()
+    {
+        return 'package_id';
+    }
+
+    /**
      * The attributes that are mass assignable.
      *
-     * @var array<string>
+     * @var array
      */
     protected $fillable = [
-        'domain_id',
         'name',
         'description',
-        'billing_type',
-        'monthly_price',
-        'yearly_price',
-        'unit_price',
-        'stripe_product_id',
-        'stripe_monthly_price_id',
-        'stripe_yearly_price_id',
-        'stripe_unit_price_id',
-        'is_active',
+        'query_limit',
+        'cost',
+        'cost_per_query',
+        'cost_yearly',
+        'stripe_price_id',
+        'stripe_price_yearly_id',
+        'permissions',
+        'premium'
     ];
 
     /**
      * The attributes that should be cast.
      *
-     * @var array<string, string>
+     * @var array
      */
     protected $casts = [
-        'monthly_price' => 'float',
-        'yearly_price' => 'float',
-        'unit_price' => 'float',
-        'is_active' => 'boolean',
+        'query_limit' => 'integer',
+        'cost' => 'decimal:2',
+        'cost_per_query' => 'decimal:2',
+        'cost_yearly' => 'decimal:2',
+        'premium' => 'boolean',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     /**
-     * Get the domain that owns the package.
-     */
-    public function domain()
-    {
-        return $this->belongsTo(Domain::class);
-    }
-
-    /**
-     * Get the subscribers for the package.
-     */
-    public function subscribers()
-    {
-        return $this->hasMany(Subscriber::class);
-    }
-
-    /**
-     * Determine if this package is a monthly subscription.
-     *
-     * @return bool
-     */
-    public function isMonthly()
-    {
-        return $this->billing_type === 'monthly';
-    }
-
-    /**
-     * Determine if this package is a yearly subscription.
-     *
-     * @return bool
-     */
-    public function isYearly()
-    {
-        return $this->billing_type === 'yearly';
-    }
-
-    /**
-     * Determine if this package is unit-based.
-     *
-     * @return bool
-     */
-    public function isUnitBased()
-    {
-        return $this->billing_type === 'unit';
-    }
-
-    /**
-     * Get formatted price for display.
-     *
-     * @return string
-     */
-    public function getFormattedPriceAttribute()
-    {
-        if ($this->isMonthly()) {
-            return $this->domain->currency . ' ' . number_format($this->monthly_price, 2) . '/month';
-        } elseif ($this->isYearly()) {
-            return $this->domain->currency . ' ' . number_format($this->yearly_price, 2) . '/year';
-        } elseif ($this->isUnitBased()) {
-            return $this->domain->currency . ' ' . number_format($this->unit_price, 2) . '/unit';
-        }
-
-        return 'N/A';
-    }
-
-    /**
-     * Scope a query to only include active packages.
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
-     */
-    public function scopeActive($query)
-    {
-        return $query->where('is_active', true);
-    }
-
-    /**
-     * Scope a query to filter by billing type.
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @param  string  $type
-     * @return \Illuminate\Database\Eloquent\Builder
-     */
-    public function scopeOfType($query, $type)
-    {
-        return $query->where('billing_type', $type);
-    }
-
-    /**
-     * Get the features for the package.
+     * Get all package features.
      */
     public function features()
     {
-        return $this->hasMany(PackageFeature::class)->orderBy('order');
+        return $this->hasMany(PackageFeature::class, 'package_id', 'package_id');
     }
 
     /**
-     * Get the features metadata as an array.
+     * Get package subscribers.
      */
-    public function getFeaturesAttribute()
+    public function subscribers()
     {
-        if ($this->features_metadata) {
-            return json_decode($this->features_metadata, true);
-        }
+        // If you have a subscriptions table
+        return $this->hasMany(Subscription::class, 'package_id', 'package_id');
+    }
 
-        return [];
+    /**
+     * Get features from permissions JSON.
+     */
+    public function getExtractedFeaturesAttribute()
+    {
+        $permissions = json_decode($this->permissions, true) ?: [];
+        return $permissions['features'] ?? [];
+    }
+
+    /**
+     * Get the Stripe product ID from permissions JSON.
+     */
+    public function getStripeProductIdAttribute()
+    {
+        $permissions = json_decode($this->permissions, true) ?: [];
+        return $permissions['stripe_product_id'] ?? null;
+    }
+
+    /**
+     * Get the Stripe unit price ID from permissions JSON.
+     */
+    public function getStripeUnitPriceIdAttribute()
+    {
+        $permissions = json_decode($this->permissions, true) ?: [];
+        return $permissions['stripe_unit_price_id'] ?? null;
     }
 }
