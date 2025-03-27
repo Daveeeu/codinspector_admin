@@ -101,8 +101,8 @@ class PackageController extends Controller
             'name' => 'required|string|max:100',
             'description' => 'nullable|string',
             'billing_type' => 'required|in:monthly,yearly,unit',
-            'monthly_price' => 'required|numeric|min:0', // Mindig kötelező
-            'yearly_price' => 'required|numeric|min:0',  // Mindig kötelező
+            'monthly_price' => 'required_if:billing_type,monthly|nullable|numeric|min:0',
+            'yearly_price' => 'required_if:billing_type,yearly|nullable|numeric|min:0',
             'unit_price' => 'required_if:billing_type,unit|nullable|numeric|min:0',
             'max_queries' => 'nullable|integer|min:1',
             'is_premium' => 'nullable|boolean',
@@ -146,8 +146,8 @@ class PackageController extends Controller
             $packageId = $db->table('packages')->insertGetId([
                 'name' => $request->name,
                 'description' => $request->description,
-                'query_limit' => $request->input('max_queries'), // Use max_queries from form
-                'cost' => ($request->billing_type === 'monthly' || $request->billing_type === 'unit') ? $request->monthly_price : 0,
+                'query_limit' => $request->billing_type !== 'unit' ? $request->input('max_queries') : 1,
+                'cost' => $request->billing_type === 'monthly' ? $request->monthly_price : 0,
                 'cost_yearly' => $request->billing_type === 'yearly' ? $request->yearly_price : 0,
                 'cost_per_query' => $request->billing_type === 'unit' ? $request->unit_price : 0,
                 'premium' => $request->has('is_premium') ? 1 : 0,
@@ -207,20 +207,21 @@ class PackageController extends Controller
             $package->package_id = $packageId;
             $package->name = $request->name;
             $package->description = $request->description;
-            $package->query_limit = $request->input('max_queries');
-// A cost és cost_yearly mezőket a billing_type szerint töltjük ki
-            $package->cost = $request->monthly_price;  // Mindig kitöltjük
-            $package->cost_yearly = $request->yearly_price; // Mindig kitöltjük
+            $package->query_limit = $request->billing_type !== 'unit' ? $request->input('max_queries') : null;
+            $package->cost = $request->billing_type === 'monthly' ? $request->monthly_price : 0;
+            $package->cost_yearly = $request->billing_type === 'yearly' ? $request->yearly_price : 0;
             $package->cost_per_query = $request->billing_type === 'unit' ? $request->unit_price : 0;
             $package->premium = $request->has('is_premium') ? 1 : 0;
             $package->permissions = json_encode($permissions);
             $package->domain = $domain;
             $package->billing_type = $request->billing_type;
 
-// Stripe számára az összes árat beállítjuk
-            $package->monthly_price = $request->monthly_price;
-            $package->yearly_price = $request->yearly_price;
-            if ($request->billing_type === 'unit') {
+            // Set appropriate prices for Stripe based on billing type
+            if ($request->billing_type === 'monthly') {
+                $package->monthly_price = $request->monthly_price;
+            } else if ($request->billing_type === 'yearly') {
+                $package->yearly_price = $request->yearly_price;
+            } else if ($request->billing_type === 'unit') {
                 $package->unit_price = $request->unit_price;
             }
 

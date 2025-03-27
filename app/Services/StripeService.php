@@ -6,6 +6,7 @@ use App\Models\Package;
 use Stripe\Product;
 use Stripe\Stripe;
 use Stripe\Customer;
+use Stripe\StripeClient;
 use Stripe\Subscription;
 use Stripe\Invoice;
 use Stripe\InvoiceItem;
@@ -15,6 +16,8 @@ use Illuminate\Support\Facades\Log;
 
 class StripeService
 {
+    protected $stripe;
+
     /**
      * Konstruktor - beállítja a Stripe API kulcsot
      */
@@ -24,6 +27,7 @@ class StripeService
             // Stripe API kulcs beállítása a konfigurációból
             Stripe::setApiKey(config('stripe.secret_key'));
             Stripe::setApiVersion('2023-10-16'); // Használjuk a legújabb stabil API verziót
+            $this->stripe = new StripeClient('sk_test_51MUKdoFZvGbKbKDMfD994YTMiaFtG7mqlaxpJcSEhqnrtHOkKV45mAB7b9f1r5Mt3HwvXRczm3X7XuXGlzrhYTyu00PBr1oDvZ');
         } catch (Exception $e) {
             Log::error('Stripe inicializálási hiba: ' . $e->getMessage());
         }
@@ -39,77 +43,83 @@ class StripeService
     {
         try {
             // Create product
-            $product = Product::create([
+            $product = $this->stripe->products->create([
                 'name' => $package->name,
-                'description' => $package->description,
-                'active' => true, // Default to active
+                'description' => $package->description ?: $package->name,
                 'metadata' => [
-                    'domain_id' => $package->domain->id,
                     'package_id' => $package->package_id,
-                    'package_type' => $package->billing_type,
+                    'premium' => $package->premium ? 'yes' : 'no',
+                    'billing_type' => $package->billing_type,
                 ],
             ]);
 
-            $prices = [];
-
-            // Create monthly price (minden csomaghoz)
-            if (isset($package->monthly_price) && $package->monthly_price > 0) {
-                $monthlyPrice = Price::create([
-                    'product' => $product->id,
-                    'unit_amount' => (int)($package->monthly_price * 100), // Convert to cents
-                    'currency' => $package->domain->currency,
-                    'recurring' => ['interval' => 'month'],
-                    'metadata' => [
-                        'package_id' => $package->package_id,
-                        'billing_type' => 'monthly',
-                    ],
-                ]);
-                $prices['monthly'] = $monthlyPrice->id;
-            }
-
-            // Create yearly price (minden csomaghoz)
-            if (isset($package->yearly_price) && $package->yearly_price > 0) {
-                $yearlyPrice = Price::create([
-                    'product' => $product->id,
-                    'unit_amount' => (int)($package->yearly_price * 100), // Convert to cents
-                    'currency' => $package->domain->currency,
-                    'recurring' => ['interval' => 'year'],
-                    'metadata' => [
-                        'package_id' => $package->package_id,
-                        'billing_type' => 'yearly',
-                    ],
-                ]);
-                $prices['yearly'] = $yearlyPrice->id;
-            }
-
-            // Create unit price (csak ha unit-based csomag)
-            if ($package->billing_type == 'unit' && isset($package->unit_price) && $package->unit_price > 0) {
-                $unitPrice = Price::create([
-                    'product' => $product->id,
-                    'unit_amount' => (int)($package->unit_price * 100), // Convert to cents
-                    'currency' => $package->domain->currency,
-                    'metadata' => [
-                        'package_id' => $package->package_id,
-                        'billing_type' => 'unit',
-                    ],
-                ]);
-                $prices['unit'] = $unitPrice->id;
-            }
-
-            return [
+            $result = [
                 'success' => true,
                 'product_id' => $product->id,
-                'prices' => $prices,
+                'prices' => []
             ];
+
+            // Create prices based on billing type
+            if ($package->billing_type === 'monthly') {
+                // Create monthly price
+                $monthlyPrice = $this->stripe->prices->create([
+                    'product' => $product->id,
+                    'unit_amount' => round($package->monthly_price * 100), // Convert to cents
+                    'currency' => $package->domain->currency,
+                    'recurring' => [
+                        'interval' => 'month',
+                    ],
+                    'metadata' => [
+                        'package_id' => $package->package_id,
+                        'type' => 'monthly',
+                    ],
+                ]);
+
+                $result['prices']['monthly'] = $monthlyPrice->id;
+            }
+            else if ($package->billing_type === 'yearly') {
+                // Create yearly price
+                $yearlyPrice = $this->stripe->prices->create([
+                    'product' => $product->id,
+                    'unit_amount' => round($package->yearly_price * 100), // Convert to cents
+                    'currency' => $package->domain->currency,
+                    'recurring' => [
+                        'interval' => 'year',
+                    ],
+                    'metadata' => [
+                        'package_id' => $package->package_id,
+                        'type' => 'yearly',
+                    ],
+                ]);
+
+                $result['prices']['yearly'] = $yearlyPrice->id;
+            }
+            else if ($package->billing_type === 'unit') {
+                // Create unit-based price
+                $unitPrice = $this->stripe->prices->create([
+                    'product' => $product->id,
+                    'unit_amount' => round($package->unit_price * 100), // Convert to cents
+                    'currency' => $package->domain->currency,
+                    'recurring' => [
+                        'interval' => 'month', // Használjunk havi ismétlődést
+                        'usage_type' => 'metered', // Mérés alapú használat
+                    ],
+                    'metadata' => [
+                        'package_id' => $package->package_id,
+                        'type' => 'unit',
+                    ],
+                ]);
+
+                $result['prices']['unit'] = $unitPrice->id;
+            }
+
+            return $result;
         } catch (Exception $e) {
-            Log::error('Stripe product creation error: ' . $e->getMessage(), [
-                'package_id' => $package->package_id,
-                'package_name' => $package->name
-            ]);
+            Log::error('Stripe product creation error: ' . $e->getMessage());
 
             return [
                 'success' => false,
-                'error' => $e->getMessage(),
+                'error' => $e->getMessage()
             ];
         }
     }

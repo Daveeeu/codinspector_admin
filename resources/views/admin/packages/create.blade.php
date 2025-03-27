@@ -45,38 +45,37 @@
                     </div>
                 </div>
 
-                <!-- Árazási lehetőségek -->
-                <!-- Árazási lehetőségek -->
+                <!-- Pricing Options -->
                 <div class="card mb-4">
                     <div class="card-header">
                         <span>Pricing Options</span>
                     </div>
                     <div class="card-body">
-                        <!-- Havi ár (mindig látható és kötelező) -->
+                        <!-- Monthly Price -->
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="monthly_price" class="form-label">Monthly Price ({{ Auth::user()->currentDomain->currency }})</label>
-                                <input type="number" step="0.01" class="form-control @error('monthly_price') is-invalid @enderror" id="monthly_price" name="monthly_price" value="{{ old('monthly_price') }}" required>
-                                <small class="text-muted">Monthly subscription price (required)</small>
+                                <input type="number" step="0.01" class="form-control @error('monthly_price') is-invalid @enderror" id="monthly_price" name="monthly_price" value="{{ old('monthly_price') }}">
+                                <small class="text-muted">Monthly subscription price (required for Monthly billing)</small>
                                 @error('monthly_price')
                                 <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
                         </div>
 
-                        <!-- Éves ár (mindig látható és kötelező) -->
+                        <!-- Yearly Price -->
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="yearly_price" class="form-label">Yearly Price ({{ Auth::user()->currentDomain->currency }})</label>
-                                <input type="number" step="0.01" class="form-control @error('yearly_price') is-invalid @enderror" id="yearly_price" name="yearly_price" value="{{ old('yearly_price') }}" required>
-                                <small class="text-muted">Yearly subscription price (required)</small>
+                                <input type="number" step="0.01" class="form-control @error('yearly_price') is-invalid @enderror" id="yearly_price" name="yearly_price" value="{{ old('yearly_price') }}">
+                                <small class="text-muted">Yearly subscription price (required for Yearly billing)</small>
                                 @error('yearly_price')
                                 <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
                             </div>
                         </div>
 
-                        <!-- Egységenkénti ár (csak ha unit-based) -->
+                        <!-- Unit Price (for unit-based billing) -->
                         <div class="row mb-3 unit-price-container" style="{{ old('billing_type') == 'unit' ? '' : 'display: none;' }}">
                             <div class="col-md-6">
                                 <label for="unit_price" class="form-label">Unit Price ({{ Auth::user()->currentDomain->currency }})</label>
@@ -90,7 +89,7 @@
                     </div>
                 </div>
 
-                <!-- Max Queries Section - Always Visible -->
+                <!-- Max Queries Section -->
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label for="max_queries" class="form-label">Maximum Queries</label>
@@ -216,109 +215,121 @@
 @endsection
 
 @section('scripts')
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const billingTypeSelect = document.getElementById('billing_type');
-            const unitPriceContainer = document.querySelector('.unit-price-container');
+   <script>
+       document.addEventListener('DOMContentLoaded', function() {
+           const billingTypeSelect = document.getElementById('billing_type');
+           const unitPriceContainer = document.querySelector('.unit-price-container');
+           const monthlyPriceContainer = document.querySelector('#monthly_price').closest('.row');
+           const yearlyPriceContainer = document.querySelector('#yearly_price').closest('.row');
+           const monthlyPrice = document.getElementById('monthly_price');
+           const yearlyPrice = document.getElementById('yearly_price');
+           const unitPrice = document.getElementById('unit_price');
+           const maxQueriesField = document.getElementById('max_queries');
+           const maxQueriesContainer = maxQueriesField.closest('.row');
 
-            // Billing type változásra
-            // Billing type változásra
-            billingTypeSelect.addEventListener('change', function() {
-                // Csak az egységalapú árat mutatjuk/rejtjük, a havi és éves ár mindig látható
-                if (this.value === 'unit') {
-                    unitPriceContainer.style.display = '';
-                    unitPrice.required = true;
-                } else {
-                    unitPriceContainer.style.display = 'none';
-                    unitPrice.required = false;
-                }
-            });
+           // Function to update required fields and visibility based on billing type
+           function updateFieldsBasedOnBillingType(billingType) {
+               // Reset all required states
+               monthlyPrice.required = false;
+               yearlyPrice.required = false;
+               unitPrice.required = false;
 
-            // Segédfunkció a kötelező mezők frissítéséhez
-            function updateRequiredFields(billingType) {
-                const monthlyPrice = document.getElementById('monthly_price');
-                const yearlyPrice = document.getElementById('yearly_price');
-                const unitPrice = document.getElementById('unit_price');
+               // Reset visibility (show all first)
+               monthlyPriceContainer.style.display = '';
+               yearlyPriceContainer.style.display = '';
+               unitPriceContainer.style.display = '';
 
-                // Alapértelmezetten egyik sem kötelező
-                monthlyPrice.required = false;
-                yearlyPrice.required = false;
-                unitPrice.required = false;
+               // Set requirements and visibility based on billing type
+               if (billingType === 'monthly') {
+                   monthlyPrice.required = true;
+                   yearlyPrice.required = false;
+                   unitPriceContainer.style.display = 'none';
+                   maxQueriesContainer.style.display = '';
+               } else if (billingType === 'yearly') {
+                   monthlyPrice.required = false;
+                   yearlyPrice.required = true;
+                   unitPriceContainer.style.display = 'none';
+                   maxQueriesContainer.style.display = '';
+               } else if (billingType === 'unit') {
+                   monthlyPrice.required = false;
+                   yearlyPrice.required = false;
+                   unitPrice.required = true;
+                   monthlyPriceContainer.style.display = 'none'
+                   yearlyPriceContainer.style.display = 'none'
+                   maxQueriesContainer.style.display = 'none';
+               }
+           }
 
-                // Beállítjuk a megfelelő kötelező mezőket
-                if (billingType === 'monthly') {
-                    monthlyPrice.required = true;
-                } else if (billingType === 'yearly') {
-                    yearlyPrice.required = true;
-                } else if (billingType === 'unit') {
-                    monthlyPrice.required = true;
-                    unitPrice.required = true;
-                }
-            }
+           // Initialize fields based on current selection
+           if (billingTypeSelect.value) {
+               updateFieldsBasedOnBillingType(billingTypeSelect.value);
+           }
 
-            // Inicializálás az aktuális értékkel
-            updateRequiredFields(billingTypeSelect.value);
+           // Handle billing type changes
+           billingTypeSelect.addEventListener('change', function() {
+               updateFieldsBasedOnBillingType(this.value);
+           });
 
-            // Features functionality
-            const addFeatureBtn = document.getElementById('add-feature');
-            const featuresContainer = document.getElementById('features-container');
-            const noFeaturesMessage = document.getElementById('no-features-message');
-            let featureIndex = {{ old('features') ? count(old('features')) : 0 }};
+           // Features functionality
+           const addFeatureBtn = document.getElementById('add-feature');
+           const featuresContainer = document.getElementById('features-container');
+           const noFeaturesMessage = document.getElementById('no-features-message');
+           let featureIndex = featuresContainer.children.length;
 
-            addFeatureBtn.addEventListener('click', function() {
-                addFeature();
-            });
+           addFeatureBtn.addEventListener('click', function() {
+               addFeature();
+           });
 
-            function addFeature() {
-                // Hide the "no features" message
-                noFeaturesMessage.classList.add('d-none');
+           function addFeature() {
+               // Hide the "no features" message
+               noFeaturesMessage.classList.add('d-none');
 
-                // Create a new feature row
-                const featureRow = document.createElement('div');
-                featureRow.className = 'feature-item row mb-3';
-                featureRow.innerHTML = `
-                    <div class="col-md-6">
-                        <input type="text" class="form-control" name="features[${featureIndex}][name]" placeholder="Feature name">
-                    </div>
-                    <div class="col-md-4">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="features[${featureIndex}][included]" id="feature-included-${featureIndex}" value="1" checked>
-                            <label class="form-check-label" for="feature-included-${featureIndex}">
-                                Included
-                            </label>
-                        </div>
-                    </div>
-                    <div class="col-md-2">
-                        <button type="button" class="btn btn-sm btn-danger remove-feature">Remove</button>
-                    </div>
-                `;
+               // Create a new feature row
+               const featureRow = document.createElement('div');
+               featureRow.className = 'feature-item row mb-3';
+               featureRow.innerHTML = `
+            <div class="col-md-6">
+                <input type="text" class="form-control" name="features[${featureIndex}][name]" placeholder="Feature name">
+            </div>
+            <div class="col-md-4">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="features[${featureIndex}][included]" id="feature-included-${featureIndex}" value="1" checked>
+                    <label class="form-check-label" for="feature-included-${featureIndex}">
+                        Included
+                    </label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-sm btn-danger remove-feature">Remove</button>
+            </div>
+        `;
 
-                featuresContainer.appendChild(featureRow);
-                featureIndex++;
+               featuresContainer.appendChild(featureRow);
+               featureIndex++;
 
-                // Add event listener to the new remove button
-                const removeButton = featureRow.querySelector('.remove-feature');
-                removeButton.addEventListener('click', function() {
-                    featureRow.remove();
+               // Add event listener to the new remove button
+               const removeButton = featureRow.querySelector('.remove-feature');
+               removeButton.addEventListener('click', function() {
+                   featureRow.remove();
 
-                    // If no features are left, show the "no features" message
-                    if (featuresContainer.children.length === 0) {
-                        noFeaturesMessage.classList.remove('d-none');
-                    }
-                });
-            }
+                   // If no features are left, show the "no features" message
+                   if (featuresContainer.children.length === 0) {
+                       noFeaturesMessage.classList.remove('d-none');
+                   }
+               });
+           }
 
-            // Add event listeners to existing remove buttons
-            document.querySelectorAll('.remove-feature').forEach(button => {
-                button.addEventListener('click', function() {
-                    this.closest('.feature-item').remove();
+           // Add event listeners to existing remove buttons
+           document.querySelectorAll('.remove-feature').forEach(button => {
+               button.addEventListener('click', function() {
+                   this.closest('.feature-item').remove();
 
-                    // If no features are left, show the "no features" message
-                    if (featuresContainer.children.length === 0) {
-                        noFeaturesMessage.classList.remove('d-none');
-                    }
-                });
-            });
-        });
-    </script>
+                   // If no features are left, show the "no features" message
+                   if (featuresContainer.children.length === 0) {
+                       noFeaturesMessage.classList.remove('d-none');
+                   }
+               });
+           });
+       });
+   </script>
 @endsection
